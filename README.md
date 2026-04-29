@@ -32,7 +32,55 @@ The Knuth-Morris-Pratt (KMP) algorithm is an efficient string matching algorithm
     3. Efficient Shifting: When a mismatch occurs, instead of backtracking the main string pointer (I), the algorithm uses the LPS table to shift only the pattern pointer (J). This ensures that the pointer I always moves forward, never backward.
     4. Outcome: The algorithm efficiently traverses the string only once, significantly reducing the search time compared to the naive O(MN) method.
 
+**Relevant Imges:**
+
+1. LPS Table Construction:
+![1777434849282](image/README/1777434849282.png)
+
+2. Utilization of LPS Table:
+![1777435555360](image/README/1777435555360.png)
+
+
 **Problem Agnostic Solution:**
 ```python
+class KMP:
+    def build_lps(self, pattern: str):
+        lps = [0] * len(pattern)
+        length = 0
+        i = 1
+        
+        while i < len(pattern):
+            if pattern[i] == pattern[length]:
+                length += 1
+                lps[i] = length
+                i += 1
+            else:
+                if length != 0:
+                    length = lps[length - 1]
+                else:
+                    lps[i] = 0
+                    i += 1
+        
+        return lps
+
+    def search(self, text: str, pattern: str):
+        lps = self.build_lps(pattern)
+        
+        i = j = 0
+        
+        while i < len(text):
+            if text[i] == pattern[j]:
+                i += 1
+                j += 1
+                
+                if j == len(pattern):
+                    return True
+            else:
+                if j != 0:
+                    j = lps[j - 1]
+                else:
+                    i += 1
+        
+        return False
 ```
 

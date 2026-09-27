@@ -1,12 +1,21 @@
 from uuid import UUID
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from app.schemas.enums import PaymentStatus, PaymentMethod
 
 
 class PaymentCreate(BaseModel):
+    # what the client sends — no amount, service derives it from the order
     order_id: UUID
+    method: PaymentMethod
+
+
+class PaymentCreateInternal(BaseModel):
+    # what the service passes to CRUD after looking up the order's final_amount
+    order_id: UUID
+    amount: Decimal
     method: PaymentMethod
 
 

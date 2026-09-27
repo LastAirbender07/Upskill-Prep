@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
-from schemas.enums import AccountStatus
+from app.schemas.enums import AccountStatus
 
 
 class UserBase(BaseModel):

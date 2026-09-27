@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
-from schemas.enums import EventType, AggregateType
+from app.schemas.enums import EventType, AggregateType
 
 
 # No EventLogCreate — events are written internally by the service layer, never by API clients.

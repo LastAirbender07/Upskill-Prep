@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
-from schemas.enums import PaymentStatus, PaymentMethod
+from app.schemas.enums import PaymentStatus, PaymentMethod
 
 
 class PaymentCreate(BaseModel):

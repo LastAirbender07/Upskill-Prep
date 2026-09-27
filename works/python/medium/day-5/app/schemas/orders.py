@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
-from schemas.enums import OrderStatus
+from app.schemas.enums import OrderStatus
 
 
 class OrderItemCreate(BaseModel):
@@ -22,8 +22,7 @@ class OrderItemResponse(BaseModel):
 
 
 class OrderCreate(BaseModel):
-    customer_id: UUID
-    items: list[OrderItemCreate] = Field(min_length=1)
+    user_id: UUID
     notes: Optional[str] = None
 
 
@@ -31,7 +30,7 @@ class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    customer_id: UUID
+    user_id: UUID
     status: OrderStatus
     total_amount: float
     discount_amount: float

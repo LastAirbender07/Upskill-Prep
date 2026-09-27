@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, APIRouter
 from fastapi.responses import JSONResponse
-from api.execption import global_exception_handler
+from app.api.execption import global_exception_handler
 from dotenv import load_dotenv
 
 load_dotenv()

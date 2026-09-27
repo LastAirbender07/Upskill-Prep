@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
-from schemas.enums import ShipmentCarrier, ShipmentStatus
+from app.schemas.enums import ShipmentCarrier, ShipmentStatus
 
 
 class ShipmentCreate(BaseModel):

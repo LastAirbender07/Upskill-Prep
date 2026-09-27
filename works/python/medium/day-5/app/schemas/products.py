@@ -1,6 +1,6 @@
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
-from schemas.enums import ProductCategory, ProductStatus
+from app.schemas.enums import ProductCategory, ProductStatus
 
 
 class ProductCreate(BaseModel):

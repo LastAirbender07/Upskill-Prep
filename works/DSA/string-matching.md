@@ -35,10 +35,10 @@ The Knuth-Morris-Pratt (KMP) algorithm is an efficient string matching algorithm
 **Relevant Imges:**
 
 1. LPS Table Construction:
-![1777434849282](../../image/README/1777434849282.png)
+![1777434849282](../../image/string-matching/1777434849282.png)
 
 2. Utilization of LPS Table:
-![1777435555360](../../image/README/1777435555360.png)
+![1777435555360](../../image/string-matching/1777435555360.png)
 
 
 **Problem Agnostic Solution:**

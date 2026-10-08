@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.enums import ProductCategory, ProductStatus
@@ -9,6 +10,14 @@ class ProductCreate(BaseModel):
     price: float = Field(gt=0, description="price per unit in INR")
     category: ProductCategory
     stock_quantity: int = Field(ge=0, default=0)
+
+
+class ProductUpdate(BaseModel):
+    # all fields optional — caller sends only what they want to change (PATCH semantics)
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    price: Optional[float] = Field(default=None, gt=0)
+    category: Optional[ProductCategory] = None
 
 
 class ProductResponse(ProductCreate):

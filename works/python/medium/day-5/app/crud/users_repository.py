@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.models.users import User
 from app.schemas.users import UserCreate, UserUpdate, UserResponse
+from app.schemas.enums import AccountStatus
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -71,6 +72,17 @@ class UsersRepository:
         self.db.commit()
         self.db.refresh(user_orm)
 
+        return UserResponse.model_validate(user_orm)
+
+    def update_status(self, user_id, new_status: AccountStatus) -> UserResponse | None:
+        user_orm = self.db.query(User).filter(User.id == user_id).first()
+
+        if user_orm is None:
+            return None
+
+        user_orm.status = new_status.value
+        self.db.commit()
+        self.db.refresh(user_orm)
         return UserResponse.model_validate(user_orm)
 
     def delete_user(self, user_id) -> bool:

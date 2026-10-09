@@ -18,7 +18,6 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(default=None, description="full name of the user")
     phone_number: Optional[str] = Field(default=None, description="phone number of the user")
 
-
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
 

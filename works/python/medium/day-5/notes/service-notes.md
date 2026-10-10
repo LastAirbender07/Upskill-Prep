@@ -187,12 +187,115 @@ Example: `restock` does two things atomically:
 
 Both go into a single `update_product(dict)` call — single DB round trip, single commit.
 
-More complex example (Order service, coming later):
-- `confirm_payment` will: mark payment as completed + update order status + update
-  user.total_spent + write an event log entry — all in one transaction.
+More complex example — `confirm_payment` does four things atomically:
+1. Marks payment completed
+2. Updates order status to `confirmed`
+3. Increments `user.total_spent`
+4. Writes a `payment_completed` event log entry
 
 When side effects span multiple CRUD repositories, the service coordinates them.
-Use `db.flush()` (not commit) between steps to keep them in one transaction.
+All repos share the same session — so all writes commit together or roll back together.
+
+---
+
+## State machines — encoding transitions as a dict
+
+For entities with a state machine (Order, Payment, Shipment), encode the allowed transitions
+as a module-level dict rather than scattered `if` checks:
+
+```python
+_VALID_TRANSITIONS: dict[PaymentStatus, set[PaymentStatus]] = {
+    PaymentStatus.pending:    {PaymentStatus.processing},
+    PaymentStatus.processing: {PaymentStatus.completed, PaymentStatus.failed},
+    PaymentStatus.failed:     {PaymentStatus.pending},    # retry path
+    PaymentStatus.completed:  {PaymentStatus.refunded},
+    PaymentStatus.refunded:   set(),                      # terminal — empty set
+}
+```
+
+Terminal states map to `set()`. This makes them self-documenting: if you see `set()`,
+that state has no exit. No special-casing needed.
+
+Pair it with a private `_assert_transition` helper:
+
+```python
+def _assert_transition(self, current: PaymentStatus, target: PaymentStatus) -> None:
+    if target not in _VALID_TRANSITIONS[current]:
+        allowed = {s.value for s in _VALID_TRANSITIONS[current]}
+        raise ValueError(
+            f"Cannot transition from '{current.value}' to '{target.value}'. "
+            f"Allowed: {allowed or 'none (terminal state)'}"
+        )
+```
+
+Every dedicated transition method calls `_assert_transition` before touching the DB:
+
+```python
+def confirm_payment(self, payment_id, transaction_ref):
+    payment = self.repo.get_by_id(payment_id)
+    self._assert_transition(payment.status, PaymentStatus.completed)   # guard first
+    return self.repo.update_status(payment_id, PaymentStatus.completed, ...)
+```
+
+The underscore prefix on `_assert_transition` marks it as internal — callers of the
+service should never call it directly.
+
+---
+
+## Multiple repositories in one service
+
+When a service method needs to coordinate across entities, inject all required repos
+in `__init__`:
+
+```python
+class PaymentService:
+    def __init__(self, db: Session):
+        self.repo = PaymentRepository(db)
+        self.order_repo = OrderRepository(db)
+        self.user_repo = UsersRepository(db)
+        self.event_repo = EventLogRepository(db)
+```
+
+All repos share the same `db` session — this is what makes them transactional.
+When `confirm_payment` updates the payment, then the order, then the user's total_spent,
+all three writes are in the same session and committed together.
+
+**Don't inject other services into a service.** If `PaymentService` needs to update an
+order, it calls `OrderRepository` directly — not `OrderService`. Service-to-service calls
+create circular dependencies and hidden side-effect chains. Services call repos, not each other.
+
+---
+
+## Side effect ordering in multi-step service methods
+
+When a method has multiple side effects, order matters:
+
+```python
+def confirm_payment(self, payment_id, transaction_ref):
+    # 1. validate first — fail fast before any writes
+    payment = self.repo.get_by_id(payment_id)
+    self._assert_transition(payment.status, PaymentStatus.completed)
+
+    # 2. primary write — the thing being confirmed
+    updated = self.repo.update_status(payment_id, PaymentStatus.completed, ...)
+
+    # 3. cascade writes — downstream state changes triggered by the primary
+    order = self.order_repo.get_by_id(payment.order_id)
+    self.order_repo.update_status(payment.order_id, OrderStatus.confirmed)
+
+    # 4. denormalized field update — derived data that must stay in sync
+    self.user_repo.update_total_spent(order.user_id, order.final_amount)
+
+    # 5. event log — always last, audit trail of what just happened
+    self.event_repo.create_event(EventType.payment_completed, ...)
+
+    return updated   # return the primary object, not a side effect
+```
+
+Rules:
+- Validate before any write — if the guard fails, nothing should have changed
+- Return the primary object the caller asked about (`updated` payment, not the order)
+- Event log is always last — it records what happened, so it goes after everything happened
 
 ---
 

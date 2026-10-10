@@ -24,7 +24,7 @@ class PaymentResponse(BaseModel):
 
     id: UUID
     order_id: UUID
-    amount: float
+    amount: Decimal
     status: PaymentStatus
     method: PaymentMethod
     transaction_ref: Optional[str] = None      # set by payment gateway, not client

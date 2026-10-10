@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.models.users import User
@@ -73,6 +74,13 @@ class UsersRepository:
         self.db.refresh(user_orm)
 
         return UserResponse.model_validate(user_orm)
+
+    def update_total_spent(self, user_id, amount_to_add: Decimal) -> None:
+        user_orm = self.db.query(User).filter(User.id == user_id).first()
+        if user_orm is None:
+            return
+        user_orm.total_spent += amount_to_add
+        self.db.commit()
 
     def update_status(self, user_id, new_status: AccountStatus) -> UserResponse | None:
         user_orm = self.db.query(User).filter(User.id == user_id).first()

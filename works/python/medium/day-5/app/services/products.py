@@ -61,10 +61,7 @@ class ProductService:
                     f"SKU '{update_dict['sku']}' is already taken by another product"
                 )
 
-        updated = self.repo.update_product(product_id, update_dict)
-        if updated is None:
-            raise ValueError(f"Product {product_id} not found")
-        return updated
+        return self.repo.update_product(product_id, update_dict)
 
     def discontinue_product(self, product_id: UUID) -> ProductResponse:
         # dedicated method for status transitions — don't let callers set arbitrary statuses

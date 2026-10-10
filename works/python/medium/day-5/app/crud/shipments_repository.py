@@ -63,7 +63,7 @@ class ShipmentRepository:
         )
         return [ShipmentResponse.model_validate(s) for s in shipments]
 
-    def update_status(
+    def update_shipment(
         self,
         shipment_id: UUID,
         new_status: ShipmentStatus,

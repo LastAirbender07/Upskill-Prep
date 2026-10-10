@@ -1,5 +1,6 @@
 from uuid import UUID
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from app.schemas.enums import AccountStatus
@@ -26,4 +27,4 @@ class UserResponse(UserBase):
     status: AccountStatus
     registration_date: datetime
     last_login: Optional[datetime] = None
-    total_spent: int = Field(default=0, description="total lifetime spend in cents")
+    total_spent: Decimal = Field(default=0, description="total lifetime spend")

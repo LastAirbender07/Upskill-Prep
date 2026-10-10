@@ -28,8 +28,8 @@ class OrderItemResponse(BaseModel):
     order_id: UUID
     product_id: UUID
     quantity: int
-    unit_price: float
-    subtotal: float
+    unit_price: Decimal
+    subtotal: Decimal
 
 
 class OrderCreate(BaseModel):
@@ -56,9 +56,9 @@ class OrderResponse(BaseModel):
     id: UUID
     user_id: UUID
     status: OrderStatus
-    total_amount: float
-    discount_amount: float
-    final_amount: float
+    total_amount: Decimal
+    discount_amount: Decimal
+    final_amount: Decimal
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime

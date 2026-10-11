@@ -1,11 +1,13 @@
 from typing import Optional
 from uuid import UUID
+from decimal import Decimal
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import IntegrityError
 from app.models.orders import Order
 from app.models.order_items import OrderLineItem
 from app.models.products import Product
-from app.schemas.orders import OrderCreateInternal, OrderResponse, OrderItemResponse
+from app.schemas.orders import OrderCreateInternal, OrderItemInternal, OrderResponse, OrderItemResponse
 from app.schemas.enums import OrderStatus
 from app.core.logger import get_logger
 
@@ -107,7 +109,7 @@ class OrderRepository:
         return OrderResponse.model_validate(order_orm)
 
     def update_amounts(
-        self, order_id: UUID, total_amount: float, discount_amount: float, final_amount: float
+        self, order_id: UUID, total_amount: Decimal, discount_amount: Decimal, final_amount: Decimal
     ) -> OrderResponse | None:
         # called when a line item is added or removed — recalculates totals
         order_orm = self.db.query(Order).filter(Order.id == order_id).first()
@@ -122,6 +124,41 @@ class OrderRepository:
         self.db.refresh(order_orm)
         return OrderResponse.model_validate(order_orm)
 
+    def replace_line_items(self, order_id: UUID, items: list[OrderItemInternal]) -> None:
+        # delete all existing line items then insert the desired set
+        # uses flush() — caller (service) commits once all writes are done
+        self.db.query(OrderLineItem).filter(OrderLineItem.order_id == order_id).delete()
+        for item in items:
+            line_item = OrderLineItem(
+                order_id=order_id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                subtotal=item.subtotal,
+            )
+            self.db.add(line_item)
+        self.db.flush()
+
     def get_orm_by_id(self, order_id: UUID) -> Order | None:
         # returns the raw ORM object — used by service layer when it needs to mutate state
         return self.db.query(Order).filter(Order.id == order_id).first()
+
+    def get_order_summary_by_user(self, user_id: UUID) -> dict:
+        row = (
+            self.db.query(
+                func.count(Order.id).label("order_count"),
+                func.max(Order.created_at).label("last_order_date"),
+            )
+            .filter(Order.user_id == user_id)
+            .one()
+        )
+        pending_count = (
+            self.db.query(Order)
+            .filter(Order.user_id == user_id, Order.status == OrderStatus.pending)
+            .count()
+        )
+        return {
+            "order_count": row.order_count or 0,
+            "pending_count": pending_count,
+            "last_order_date": row.last_order_date,
+        }

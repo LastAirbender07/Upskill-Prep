@@ -324,3 +324,112 @@ Both layers log, but for different purposes:
 
 Service logs include business context (SKU, user, reason).
 CRUD logs are more technical (IDs, table names, row counts).
+
+---
+
+## Desired-state sync vs individual operations
+
+Two ways to expose mutation on a collection:
+
+### Individual operations (add/remove/update)
+```python
+def add_item_to_order(order_id, item): ...
+def remove_item_from_order(order_id, product_id): ...
+def update_item_quantity(order_id, product_id, quantity): ...
+```
+The caller tells you exactly what changed. Works fine, but means 3 separate endpoints
+and the client must track each operation. Each one needs its own business logic, stock check,
+and total recalculation. Stock can also get out of sync if one operation fails mid-sequence.
+
+### Desired-state sync
+```python
+def update_order_items(order_id, items: list[OrderItemCreate]): ...
+```
+The caller sends the FULL DESIRED STATE — every item with its quantity.
+The service diffs old vs new and handles everything in one atomic operation:
+
+```
+old = {A: 2, B: 3}          # what's in the order now
+new = {A: 5, C: 1}          # what the caller wants
+
+A: 2 → 5  →  deduct 3 more
+B: 3 → 0  →  restore 3 (item removed)
+C: 0 → 1  →  deduct 1 (item added)
+
+replace_line_items(new)      # flush
+update_amounts(new totals)   # commit — one atomic operation
+```
+
+**When to use desired-state sync:**
+- The collection is owned by the parent entity (order owns its line items)
+- All changes to the collection should be atomic
+- Callers don't care about the intermediate steps, only the end result
+
+**When to use individual operations:**
+- Changes are independent events the caller intentionally triggers one at a time
+- Each operation has its own distinct business meaning (e.g., confirm vs cancel vs ship)
+- The state machine has enforced transitions (these are NOT desired-state)
+
+Order items = desired-state. Order status = state machine. Use the right pattern for each.
+
+---
+
+## Why stock sync needs old quantities even when line items are replaced wholesale
+
+`replace_line_items` deletes all existing rows and inserts fresh ones — it doesn't need old data.
+Stock is different. `products.stock_quantity` is a **running balance**, not a row you replace.
+
+When `create_order` ran, it already deducted stock:
+```
+product A: stock was 10 → deducted 5 → now 5 in DB
+```
+
+If `update_order_items` is now called with product A: quantity 7, and you ignore the old:
+```python
+self.product_repo.deduct_stock(A, 7)   # deducts 7 again → stock = 5 - 7 = -2  ❌
+```
+
+You need the diff:
+```python
+old=5, new=7  → deduct 2 more   (stock: 5 → 3)  ✓
+old=5, new=3  → restore 2       (stock: 5 → 7)  ✓
+old=5, new=0  → restore 5       (stock: 5 → 10) ✓
+```
+
+**The mental model:** line items are stateless rows (safe to delete+recreate). Stock is stateful
+accumulated history (every order creation/cancellation changes it). To make a correct
+adjustment you must know the current reservation — otherwise you double-count.
+
+There IS an alternative: restore ALL old stock first, then deduct ALL new. It reaches the same
+final number, but it means doing DB writes before validation completes. If validation later
+fails, those writes need to be rolled back. The diff approach keeps all validation as pure reads
+so nothing is written unless everything is valid — cleaner failure path.
+
+---
+
+## Flush chain pattern — multi-step atomic writes
+
+`flush()` sends SQL to the DB without committing. The transaction stays open.
+`commit()` closes the transaction, making all flushed writes permanent.
+
+Use `flush()` in CRUD methods that are intermediate steps, `commit()` in the last step:
+
+```python
+# service — all of these happen in ONE transaction:
+product_repo.restore_stock(product_id, qty)    # flush — SQL sent, not committed
+order_repo.replace_line_items(order_id, items) # flush — SQL sent, not committed
+order_repo.update_amounts(order_id, ...)        # commit — everything above commits here
+```
+
+If anything raises before `commit()`, the entire transaction is rolled back.
+No partial state is ever written.
+
+**Rule of thumb:**
+- CRUD method that is always a step in a larger operation → `flush()`
+- CRUD method that is the final step / can be called standalone → `commit()`
+
+In practice: `deduct_stock`, `restore_stock`, `replace_line_items` all `flush()`.
+`create_order`, `update_amounts`, `update_status` all `commit()`.
+
+The service controls which call is "last" — and therefore which `commit()` closes the transaction.
+

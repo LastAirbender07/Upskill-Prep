@@ -28,3 +28,14 @@ class UserResponse(UserBase):
     registration_date: datetime
     last_login: Optional[datetime] = None
     total_spent: Decimal = Field(default=0, description="total lifetime spend")
+
+
+class OrderSummary(BaseModel):
+    order_count: int
+    pending_count: int
+    last_order_date: Optional[datetime] = None
+
+
+class UserProfileResponse(BaseModel):
+    user: UserResponse
+    orders: OrderSummary

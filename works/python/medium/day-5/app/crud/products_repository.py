@@ -61,6 +61,20 @@ class ProductRepository:
         products = query.offset(skip).limit(limit).all()
         return [ProductResponse.model_validate(p) for p in products]
 
+    def deduct_stock(self, product_id, quantity: int) -> None:
+        product_orm = self.db.query(Product).filter(Product.id == product_id).first()
+        if product_orm is None:
+            return
+        product_orm.stock_quantity -= quantity
+        self.db.flush()  # flush, NOT commit — caller controls the transaction boundary
+
+    def restore_stock(self, product_id, quantity: int) -> None:
+        product_orm = self.db.query(Product).filter(Product.id == product_id).first()
+        if product_orm is None:
+            return
+        product_orm.stock_quantity += quantity
+        self.db.flush()  # flush, NOT commit — caller controls the transaction boundary
+
     def update_product(self, product_id, update_data: dict) -> ProductResponse | None:
         product_orm = self.db.query(Product).filter(Product.id == product_id).first()
 

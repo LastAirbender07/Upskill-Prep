@@ -4,6 +4,8 @@ from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.enums import OrderStatus
+from app.schemas.payments import PaymentResponse
+from app.schemas.shipments import ShipmentResponse
 
 
 class OrderItemCreate(BaseModel):
@@ -63,3 +65,9 @@ class OrderResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     line_items: list[OrderItemResponse] = []
+
+
+class OrderDetailResponse(BaseModel):
+    order: OrderResponse
+    payments: list[PaymentResponse] = []
+    shipment: Optional[ShipmentResponse] = None

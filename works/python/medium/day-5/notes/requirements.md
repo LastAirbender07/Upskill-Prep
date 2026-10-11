@@ -254,7 +254,7 @@ specific validation, transaction management, and side effects.
 
 ### Order Service
 - `create_order(customer_id, items)` — validate customer status, check stock, snapshot prices, calculate total
-- `add_item_to_order(order_id, product_id, quantity)` — validate order status, update total
+- `update_order_items(order_id, items)` — desired-state sync: diff old vs new items, adjust stock atomically, recalculate totals
 - `cancel_order(order_id)` — validate state machine, restore stock, log event
 - `get_order_details(order_id)` — order + line items + payment + shipment
 - `get_orders_by_customer(customer_id, filters)` — paginated list with filtering by status

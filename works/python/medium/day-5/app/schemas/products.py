@@ -25,3 +25,7 @@ class ProductResponse(ProductCreate):
 
     id: UUID
     status: ProductStatus
+
+
+class RestockRequest(BaseModel):
+    quantity: int = Field(gt=0, description="units to add to current stock")

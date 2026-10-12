@@ -3,6 +3,7 @@ from fastapi import FastAPI, APIRouter
 from fastapi.responses import JSONResponse
 from app.core.exceptions import global_exception_handler
 from app.api.routes.users import router as users_router
+from app.api.routes.products import router as products_router
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,6 +25,7 @@ async def root():
 
 api_router = APIRouter(prefix="/v1")
 api_router.include_router(users_router)
+api_router.include_router(products_router)
 
 app.include_router(api_router)
 

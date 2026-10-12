@@ -158,6 +158,132 @@ def create_user(data: UserCreate, db: Session = Depends(get_db)):
 Note: FastAPI automatically returns 422 when Pydantic validation fails on the request body —
 you don't need to handle that manually.
 
+---
+
+## HTTP verbs — when to use GET, POST, PUT, PATCH, DELETE
+
+### The quick reference
+
+| Verb | Use for | Idempotent? | Has body? |
+|---|---|---|---|
+| `GET` | Read a resource or list | Yes | No |
+| `POST` | Create a new resource, or trigger an action | No | Yes |
+| `PUT` | Replace a resource completely | Yes | Yes |
+| `PATCH` | Update specific fields of a resource | No* | Yes |
+| `DELETE` | Remove a resource | Yes | No |
+
+*Idempotent = calling it twice with the same input produces the same result.
+
+---
+
+### GET — read only, no side effects
+
+```python
+@router.get("/", response_model=list[ProductResponse])       # list
+@router.get("/{product_id}", response_model=ProductResponse) # single
+```
+
+Never use GET for writes. No request body.
+
+---
+
+### POST — create, or trigger an action
+
+**Create a new resource:**
+```python
+@router.post("/", response_model=ProductResponse, status_code=201)
+def create_product(data: ProductCreate, ...):
+```
+The resource doesn't exist yet — POST brings it into existence. Returns 201.
+
+**Trigger an action (command endpoint):**
+```python
+@router.post("/{product_id}/restock", response_model=ProductResponse)
+def restock_product(product_id: UUID, body: RestockRequest, ...):
+```
+Used when the operation is a meaningful business action with side effects, not a simple field change:
+- The input is a delta (`quantity: 50` = "add 50"), not a target value
+- There's business logic (check discontinued, potentially flip status)
+- Calling it twice with the same input changes state twice (not idempotent)
+
+Pattern: `POST /{resource}/{id}/action`
+
+---
+
+### PUT — full replacement (rarely used in practice)
+
+```python
+@router.put("/{product_id}", response_model=ProductResponse)
+def replace_product(product_id: UUID, data: ProductReplace, ...):
+```
+
+PUT means: "take everything I'm sending and replace the entire resource with it."
+If the product has 10 fields and you PUT with 2 fields, the other 8 become null or default.
+
+The service for a PUT must NOT use `exclude_unset=True` — every field must be present.
+
+**When to use it:** rarely. Only if the caller always sends the complete object (e.g. a config file upload, overwriting a settings document). Most update endpoints are PATCH.
+
+**The tell:** if your schema has `Optional` fields, it's PATCH, not PUT.
+
+---
+
+### PATCH — partial update (most common update verb)
+
+```python
+@router.patch("/{product_id}", response_model=ProductResponse)
+def update_product(product_id: UUID, data: ProductUpdate, ...):
+```
+
+PATCH means: "update only the fields I'm sending, leave everything else unchanged."
+
+The service uses `model_dump(exclude_unset=True)` so only fields explicitly sent in the request body get written to the DB.
+
+```python
+# PATCH /products/{id} with body {"name": "New Name"}
+# → only name is updated, price/sku/category are untouched
+```
+
+**PATCH for state transitions** is also common:
+```python
+@router.patch("/{product_id}/discontinue", response_model=ProductResponse)
+def discontinue_product(product_id: UUID, ...):
+```
+There's no body needed — the action IS the transition. `/discontinue` reads like "apply this
+partial change (status = discontinued) to the resource."
+
+**The rule:**
+- Schema has Optional fields + service uses `exclude_unset=True` → `PATCH`
+- Meaningful business action with side effects, additive/delta input → `POST /action`
+- Full replacement → `PUT`
+
+---
+
+### DELETE — remove a resource
+
+```python
+@router.delete("/{product_id}", status_code=204)
+def delete_product(product_id: UUID, ...):
+```
+
+Returns 204 (no body). Idempotent — deleting something that's already gone should return 404,
+not an error that breaks the caller.
+
+---
+
+### Summary: how this project uses each verb
+
+| Endpoint | Verb | Why |
+|---|---|---|
+| `POST /users/` | POST | Creating a new user |
+| `GET /users/{id}` | GET | Reading a user |
+| `PATCH /users/{id}` | PATCH | Partial field update |
+| `POST /users/{id}/suspend` | POST | Business action with side effects (log event) |
+| `DELETE /users/{id}` | DELETE | Remove resource |
+| `PATCH /products/{id}` | PATCH | Partial field update (name, price, etc.) |
+| `PATCH /products/{id}/discontinue` | PATCH | State transition (no body needed) |
+| `POST /products/{id}/restock` | POST | Additive action, side effects, not idempotent |
+
 ### 204 — no return value
 
 ```python

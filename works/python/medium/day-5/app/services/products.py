@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.crud.products_repository import ProductRepository
 from app.schemas.products import ProductCreate, ProductResponse, ProductUpdate
 from app.schemas.enums import ProductStatus
+from app.core.exceptions import NotFoundError, ConflictError, BusinessRuleError
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -17,20 +18,20 @@ class ProductService:
         # gives a cleaner error message than catching IntegrityError
         existing = self.repo.get_by_sku(data.sku)
         if existing:
-            raise ValueError(f"A product with SKU '{data.sku}' already exists")
+            raise ConflictError(f"A product with SKU '{data.sku}' already exists")
 
         return self.repo.create_product(data)
 
     def get_product(self, product_id: UUID) -> ProductResponse:
         product = self.repo.get_by_id(product_id)
         if product is None:
-            raise ValueError(f"Product {product_id} not found")
+            raise NotFoundError(f"Product {product_id} not found")
         return product
 
     def get_by_sku(self, sku: str) -> ProductResponse:
         product = self.repo.get_by_sku(sku)
         if product is None:
-            raise ValueError(f"Product with SKU '{sku}' not found")
+            raise NotFoundError(f"Product with SKU '{sku}' not found")
         return product
 
     def list_products(
@@ -50,14 +51,14 @@ class ProductService:
         # verify it exists first — gives a 404-style error, not a silent no-op
         existing = self.repo.get_by_id(product_id)
         if existing is None:
-            raise ValueError(f"Product {product_id} not found")
+            raise NotFoundError(f"Product {product_id} not found")
 
         # if SKU is being changed, check it doesn't collide with another product
         update_dict = data.model_dump(exclude_unset=True)
         if "sku" in update_dict:
             collision = self.repo.get_by_sku(update_dict["sku"])
             if collision and collision.id != product_id:
-                raise ValueError(
+                raise ConflictError(
                     f"SKU '{update_dict['sku']}' is already taken by another product"
                 )
 
@@ -67,10 +68,10 @@ class ProductService:
         # dedicated method for status transitions — don't let callers set arbitrary statuses
         existing = self.repo.get_by_id(product_id)
         if existing is None:
-            raise ValueError(f"Product {product_id} not found")
+            raise NotFoundError(f"Product {product_id} not found")
 
         if existing.status == ProductStatus.discontinued:
-            raise ValueError(f"Product {product_id} is already discontinued")
+            raise BusinessRuleError(f"Product {product_id} is already discontinued")
 
         updated = self.repo.update_product(
             product_id, {"status": ProductStatus.discontinued.value}
@@ -80,14 +81,14 @@ class ProductService:
 
     def restock(self, product_id: UUID, quantity: int) -> ProductResponse:
         if quantity <= 0:
-            raise ValueError("Restock quantity must be greater than 0")
+            raise BusinessRuleError("Restock quantity must be greater than 0")
 
         existing = self.repo.get_by_id(product_id)
         if existing is None:
-            raise ValueError(f"Product {product_id} not found")
+            raise NotFoundError(f"Product {product_id} not found")
 
         if existing.status == ProductStatus.discontinued:
-            raise ValueError("Cannot restock a discontinued product")
+            raise BusinessRuleError("Cannot restock a discontinued product")
 
         new_quantity = existing.stock_quantity + quantity
         # if the product was out_of_stock, restocking makes it available again
@@ -109,10 +110,10 @@ class ProductService:
     def delete_product(self, product_id: UUID) -> None:
         existing = self.repo.get_by_id(product_id)
         if existing is None:
-            raise ValueError(f"Product {product_id} not found")
+            raise NotFoundError(f"Product {product_id} not found")
 
         # CRUD raises ValueError if product exists in order_line_items (RESTRICT FK)
         deleted = self.repo.delete_product(product_id)
         if not deleted:
-            raise ValueError(f"Product {product_id} not found")
+            raise NotFoundError(f"Product {product_id} not found")
         logger.info(f"Deleted product {product_id} ({existing.sku})")

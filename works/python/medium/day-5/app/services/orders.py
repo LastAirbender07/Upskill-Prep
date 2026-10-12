@@ -22,6 +22,7 @@ from app.schemas.enums import (
     EventType,
     AggregateType,
 )
+from app.core.exceptions import NotFoundError, ConflictError, BusinessRuleError
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -49,14 +50,14 @@ class OrderService:
     def create_order(self, data: OrderCreate) -> OrderResponse:
         user = self.user_repo.get_by_id(data.user_id)
         if user is None:
-            raise ValueError(f"User {data.user_id} not found")
+            raise NotFoundError(f"User {data.user_id} not found")
         if user.status != AccountStatus.active:
-            raise ValueError(
+            raise BusinessRuleError(
                 f"User {data.user_id} account is '{user.status.value}' — cannot place orders"
             )
 
         if self.order_repo.get_pending_count_by_user(data.user_id) >= 5:
-            raise ValueError(
+            raise BusinessRuleError(
                 f"User {data.user_id} has reached the maximum of 5 pending orders"
             )
 
@@ -81,7 +82,7 @@ class OrderService:
     def get_order(self, order_id: UUID) -> OrderResponse:
         order = self.order_repo.get_by_id(order_id)
         if order is None:
-            raise ValueError(f"Order {order_id} not found")
+            raise NotFoundError(f"Order {order_id} not found")
         return order
 
     def get_orders_by_user(self, user_id: UUID) -> list[OrderResponse]:
@@ -90,7 +91,7 @@ class OrderService:
     def get_order_details(self, order_id: UUID) -> OrderDetailResponse:
         order = self.order_repo.get_by_id(order_id)
         if order is None:
-            raise ValueError(f"Order {order_id} not found")
+            raise NotFoundError(f"Order {order_id} not found")
 
         payments = self.payment_repo.get_by_order(order_id)
         shipment = self.shipment_repo.get_by_order(order_id)
@@ -102,14 +103,14 @@ class OrderService:
     ) -> OrderResponse:
         order = self.order_repo.get_by_id(order_id)
         if order is None:
-            raise ValueError(f"Order {order_id} not found")
+            raise NotFoundError(f"Order {order_id} not found")
         if order.status != OrderStatus.pending:
-            raise ValueError(
+            raise BusinessRuleError(
                 f"Can only modify items on a pending order — current status: {order.status.value}"
             )
 
         if len(items) != len({item.product_id for item in items}):
-            raise ValueError("Duplicate products in item list")
+            raise BusinessRuleError("Duplicate products in item list")
 
         old_qty_map: dict[UUID, int] = {
             li.product_id: li.quantity for li in order.line_items
@@ -139,7 +140,7 @@ class OrderService:
     def cancel_order(self, order_id: UUID) -> OrderResponse:
         order = self.order_repo.get_by_id(order_id)
         if order is None:
-            raise ValueError(f"Order {order_id} not found")
+            raise NotFoundError(f"Order {order_id} not found")
 
         self._assert_transition(order.status, OrderStatus.cancelled)
 
@@ -163,7 +164,7 @@ class OrderService:
     def _construct_order_internal(self, data: OrderCreate) -> OrderCreateInternal:
         product_ids = [item.product_id for item in data.items]
         if len(product_ids) != len(set(product_ids)):
-            raise ValueError(
+            raise BusinessRuleError(
                 "Duplicate products in order — use quantity > 1 for the same product"
             )
 
@@ -194,9 +195,9 @@ class OrderService:
         product = self.product_repo.get_by_id(item.product_id)
 
         if product is None:
-            raise ValueError(f"Product {item.product_id} not found")
+            raise NotFoundError(f"Product {item.product_id} not found")
         if product.status != ProductStatus.available:
-            raise ValueError(
+            raise BusinessRuleError(
                 f"Product {item.product_id} ('{product.name}') is not available — "
                 f"status: {product.status}"
             )
@@ -204,7 +205,7 @@ class OrderService:
         # reserved = quantity already held by this order; only the NET additional must be in stock
         additional_needed = item.quantity - reserved
         if additional_needed > 0 and product.stock_quantity < additional_needed:
-            raise ValueError(
+            raise BusinessRuleError(
                 f"Insufficient stock for '{product.name}': "
                 f"need {additional_needed} more, have {product.stock_quantity}"
             )
@@ -239,7 +240,7 @@ class OrderService:
     def _assert_transition(self, current: OrderStatus, target: OrderStatus) -> None:
         if target not in _VALID_TRANSITIONS[current]:
             allowed = {s.value for s in _VALID_TRANSITIONS[current]}
-            raise ValueError(
+            raise BusinessRuleError(
                 f"Cannot transition order from '{current.value}' to '{target.value}'. "
                 f"Allowed next states: {allowed or 'none (terminal state)'}"
             )

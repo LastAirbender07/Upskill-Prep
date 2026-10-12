@@ -39,3 +39,7 @@ class OrderSummary(BaseModel):
 class UserProfileResponse(BaseModel):
     user: UserResponse
     orders: OrderSummary
+
+
+class SuspendRequest(BaseModel):
+    reason: str

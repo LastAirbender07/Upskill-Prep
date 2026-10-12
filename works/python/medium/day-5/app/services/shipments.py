@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.crud.shipments_repository import ShipmentRepository
 from app.schemas.shipments import ShipmentCreate, ShipmentResponse
 from app.schemas.enums import ShipmentStatus
+from app.core.exceptions import NotFoundError, ConflictError, BusinessRuleError
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,19 +26,19 @@ class ShipmentService:
     def create_shipment(self, data: ShipmentCreate) -> ShipmentResponse:
         # one-to-one — an order can have at most one shipment
         if self.repo.get_by_order(data.order_id):
-            raise ValueError(f"A shipment for order {data.order_id} already exists")
+            raise ConflictError(f"A shipment for order {data.order_id} already exists")
         return self.repo.create_shipment(data)
 
     def get_shipment(self, shipment_id: UUID) -> ShipmentResponse:
         shipment = self.repo.get_by_id(shipment_id)
         if shipment is None:
-            raise ValueError(f"Shipment {shipment_id} not found")
+            raise NotFoundError(f"Shipment {shipment_id} not found")
         return shipment
 
     def get_by_order(self, order_id: UUID) -> ShipmentResponse:
         shipment = self.repo.get_by_order(order_id)
         if shipment is None:
-            raise ValueError(f"No shipment found for order {order_id}")
+            raise NotFoundError(f"No shipment found for order {order_id}")
         return shipment
 
     def get_overdue(self) -> list[ShipmentResponse]:
@@ -47,7 +48,7 @@ class ShipmentService:
         """preparing -> dispatched. tracking_number is required at this point."""
         shipment = self.repo.get_by_id(shipment_id)
         if shipment is None:
-            raise ValueError(f"Shipment {shipment_id} not found")
+            raise NotFoundError(f"Shipment {shipment_id} not found")
 
         self._assert_transition(shipment.status, ShipmentStatus.dispatched)
 
@@ -65,7 +66,7 @@ class ShipmentService:
         """dispatched -> in_transit."""
         shipment = self.repo.get_by_id(shipment_id)
         if shipment is None:
-            raise ValueError(f"Shipment {shipment_id} not found")
+            raise NotFoundError(f"Shipment {shipment_id} not found")
 
         self._assert_transition(shipment.status, ShipmentStatus.in_transit)
 
@@ -79,7 +80,7 @@ class ShipmentService:
         """in_transit -> delivered. actual_delivery_date is required."""
         shipment = self.repo.get_by_id(shipment_id)
         if shipment is None:
-            raise ValueError(f"Shipment {shipment_id} not found")
+            raise NotFoundError(f"Shipment {shipment_id} not found")
 
         self._assert_transition(shipment.status, ShipmentStatus.delivered)
 
@@ -95,7 +96,7 @@ class ShipmentService:
         """in_transit -> returned."""
         shipment = self.repo.get_by_id(shipment_id)
         if shipment is None:
-            raise ValueError(f"Shipment {shipment_id} not found")
+            raise NotFoundError(f"Shipment {shipment_id} not found")
 
         self._assert_transition(shipment.status, ShipmentStatus.returned)
 
@@ -110,7 +111,7 @@ class ShipmentService:
     ) -> None:
         if target not in _VALID_TRANSITIONS[current]:
             allowed = {s.value for s in _VALID_TRANSITIONS[current]}
-            raise ValueError(
+            raise BusinessRuleError(
                 f"Cannot transition shipment from '{current.value}' to '{target.value}'. "
                 f"Allowed next states: {allowed or 'none (terminal state)'}"
             )
